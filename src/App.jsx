@@ -26,6 +26,7 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ||
   (window.location.protocol === "file:" ? "http://localhost:4173" : "");
 const STORAGE_KEY = "market-v2-dashboard";
+const CHART_REFRESH_INTERVAL_MS = 60_000;
 const DEFAULT_SYMBOLS = [
   { symbol: "AAPL", name: "Apple Inc.", range: "1M" },
   { symbol: "MSFT", name: "Microsoft Corporation", range: "1M" },
@@ -33,11 +34,55 @@ const DEFAULT_SYMBOLS = [
 ];
 const RANGES = ["1D", "5D", "1M", "6M", "YTD", "1Y", "5Y"];
 
+function normalizeSymbol(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9.^=-]/g, "")
+    .slice(0, 24);
+}
+
+function normalizeRange(value) {
+  return RANGES.includes(value) ? value : "1M";
+}
+
+function normalizeSecurity(security) {
+  const symbol = normalizeSymbol(security?.symbol);
+  if (!symbol) return null;
+
+  return {
+    symbol,
+    name: String(security?.name || symbol).slice(0, 120),
+    range: normalizeRange(security?.range)
+  };
+}
+
+function serializeSecurities(securities) {
+  return {
+    version: 1,
+    securities: securities.map((security) => ({
+      symbol: security.symbol,
+      range: security.range
+    }))
+  };
+}
+
 function loadSecurities() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (Array.isArray(stored) && stored.length) {
-      return stored;
+    const rawSecurities = Array.isArray(stored) ? stored : stored?.securities;
+
+    if (Array.isArray(rawSecurities) && rawSecurities.length) {
+      const seen = new Set();
+      const securities = rawSecurities
+        .map(normalizeSecurity)
+        .filter((security) => {
+          if (!security || seen.has(security.symbol)) return false;
+          seen.add(security.symbol);
+          return true;
+        });
+
+      if (securities.length) return securities;
     }
   } catch {
     // Ignore corrupt local storage and start with the default board.
@@ -100,7 +145,6 @@ function getLineColor(changePercent) {
 function App() {
   const [securities, setSecurities] = useState(loadSecurities);
   const [quotes, setQuotes] = useState({});
-  const [history, setHistory] = useState({});
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -115,7 +159,7 @@ function App() {
   );
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(securities));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeSecurities(securities)));
   }, [securities]);
 
   useEffect(() => {
@@ -172,43 +216,16 @@ function App() {
     }
   }
 
-  async function refreshHistory(security) {
-    const key = `${security.symbol}:${security.range}`;
-
-    setHistory((current) => ({
-      ...current,
-      [key]: { ...current[key], loading: true, error: "" }
-    }));
-
-    try {
-      const response = await fetch(
-        `${API_BASE}/api/history/${encodeURIComponent(security.symbol)}?range=${security.range}`
-      );
-      const data = await response.json();
-      setHistory((current) => ({
-        ...current,
-        [key]: { points: data.points || [], loading: false, error: "" }
-      }));
-    } catch {
-      setHistory((current) => ({
-        ...current,
-        [key]: { points: [], loading: false, error: "Chart unavailable" }
-      }));
-    }
-  }
-
   useEffect(() => {
     refreshQuotes();
     const timer = window.setInterval(refreshQuotes, 10000);
     return () => window.clearInterval(timer);
   }, [symbols]);
 
-  useEffect(() => {
-    securities.forEach(refreshHistory);
-  }, [securities]);
-
   function addSecurity(result) {
-    const symbol = result.symbol.toUpperCase();
+    const symbol = normalizeSymbol(result.symbol);
+    if (!symbol) return;
+
     if (securities.some((security) => security.symbol === symbol)) {
       setQuery("");
       setResults([]);
@@ -225,7 +242,7 @@ function App() {
 
   function addTypedSymbol(event) {
     event.preventDefault();
-    const symbol = query.trim().toUpperCase();
+    const symbol = normalizeSymbol(query);
     if (!symbol || securities.some((security) => security.symbol === symbol)) return;
     addSecurity({ symbol, name: symbol });
   }
@@ -340,7 +357,6 @@ function App() {
       <section className="market-grid" aria-label="Watched instruments">
         {securities.map((security) => (
           <SecurityCard
-            history={history[`${security.symbol}:${security.range}`]}
             key={security.symbol}
             onRangeChange={updateRange}
             onRemove={removeSecurity}
@@ -362,12 +378,69 @@ function App() {
   );
 }
 
-function SecurityCard({ security, quote, history, onRangeChange, onRemove }) {
+function SecurityCard({ security, quote, onRangeChange, onRemove }) {
+  const [history, setHistory] = useState({
+    points: [],
+    loading: true,
+    refreshing: false,
+    error: ""
+  });
+  const requestRef = useRef(null);
   const data = history?.points || [];
   const chartColor = getLineColor(quote?.changePercent);
   const positive = Number.isFinite(quote?.changePercent) && quote.changePercent >= 0;
   const badgeClass = positive ? "quote-badge positive" : "quote-badge negative";
   const gradientId = `fill-${security.symbol.replace(/[^a-z0-9]/gi, "")}`;
+
+  useEffect(() => {
+    let active = true;
+
+    async function refreshHistory(showLoading = false) {
+      requestRef.current?.abort();
+      const controller = new AbortController();
+      requestRef.current = controller;
+
+      setHistory((current) => ({
+        ...current,
+        loading: showLoading || current.points.length === 0,
+        refreshing: !showLoading && current.points.length > 0,
+        error: ""
+      }));
+
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/history/${encodeURIComponent(security.symbol)}?range=${security.range}`,
+          { signal: controller.signal }
+        );
+        const data = await response.json();
+
+        if (!active) return;
+        setHistory({
+          points: data.points || [],
+          loading: false,
+          refreshing: false,
+          error: ""
+        });
+      } catch (requestError) {
+        if (!active || requestError.name === "AbortError") return;
+        setHistory((current) => ({
+          points: current.points,
+          loading: false,
+          refreshing: false,
+          error: current.points.length ? "" : "Chart unavailable"
+        }));
+      }
+    }
+
+    refreshHistory(true);
+    const timer = window.setInterval(() => refreshHistory(false), CHART_REFRESH_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      requestRef.current?.abort();
+      window.clearInterval(timer);
+    };
+  }, [security.symbol, security.range]);
 
   return (
     <article className="security-card">

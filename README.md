@@ -58,6 +58,8 @@ npx netlify deploy --prod
 
 Netlify serves the Vite frontend from `dist/` and rewrites `/api/*` to a stateless serverless function in `netlify/functions/api.mjs`. Watchlists and chart ranges stay in each user's browser local storage.
 
+Only the symbol and selected chart range are persisted locally. Quotes, company metadata, prices, and chart history are fetched fresh and are not stored.
+
 ## Notes
 
 - Market data is fetched through the app's local Node proxy using `yahoo-finance2`.
