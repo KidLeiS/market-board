@@ -142,6 +142,10 @@ function getLineColor(changePercent) {
   return changePercent >= 0 ? "#0f9f6e" : "#d92d20";
 }
 
+function securityAnchorId(symbol) {
+  return `investment-${symbol.replace(/[^a-z0-9]/gi, "-")}`;
+}
+
 function App() {
   const [securities, setSecurities] = useState(loadSecurities);
   const [quotes, setQuotes] = useState({});
@@ -151,7 +155,9 @@ function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [error, setError] = useState("");
+  const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
   const searchAbort = useRef(null);
+  const watchlistRef = useRef(null);
 
   const symbols = useMemo(
     () => securities.map((security) => security.symbol).join(","),
@@ -161,6 +167,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeSecurities(securities)));
   }, [securities]);
+
+  useEffect(() => {
+    function closeWatchlist(event) {
+      if (!watchlistRef.current?.contains(event.target)) {
+        setIsWatchlistOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeWatchlist);
+    return () => document.removeEventListener("pointerdown", closeWatchlist);
+  }, []);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -259,6 +276,12 @@ function App() {
     setSecurities((current) => current.filter((security) => security.symbol !== symbol));
   }
 
+  function focusSecurity(symbol) {
+    const target = document.getElementById(securityAnchorId(symbol));
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setIsWatchlistOpen(false);
+  }
+
   const movers = useMemo(() => {
     const list = Object.values(quotes).filter((quote) =>
       Number.isFinite(quote.changePercent)
@@ -283,9 +306,47 @@ function App() {
         </div>
 
         <div className="status-strip" aria-label="Dashboard status">
-          <div className="status-item">
-            <BarChart3 size={17} />
-            <span>{securities.length} watched</span>
+          <div
+            className="watchlist-menu"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setIsWatchlistOpen(false);
+            }}
+            ref={watchlistRef}
+          >
+            <button
+              aria-expanded={isWatchlistOpen}
+              aria-haspopup="menu"
+              className="status-item status-button"
+              onClick={() => setIsWatchlistOpen((open) => !open)}
+              type="button"
+            >
+              <BarChart3 size={17} />
+              <span>{securities.length} watched</span>
+            </button>
+
+            {isWatchlistOpen && (
+              <div className="watchlist-panel" role="menu">
+                {securities.map((security) => {
+                  const quote = quotes[security.symbol];
+
+                  return (
+                    <button
+                      className="watchlist-row"
+                      key={security.symbol}
+                      onClick={() => focusSecurity(security.symbol)}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span>
+                        <strong>{security.symbol}</strong>
+                        <em>{quote?.name || security.name}</em>
+                      </span>
+                      <b>{currency(quote?.price, quote?.currency)}</b>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div className="status-item gain">
             <TrendingUp size={17} />
@@ -443,7 +504,7 @@ function SecurityCard({ security, quote, onRangeChange, onRemove }) {
   }, [security.symbol, security.range]);
 
   return (
-    <article className="security-card">
+    <article className="security-card" id={securityAnchorId(security.symbol)}>
       <div className="card-head">
         <div>
           <div className="ticker-row">
