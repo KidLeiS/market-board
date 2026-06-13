@@ -4,3 +4,7 @@ release/
 .DS_Store
 .env
 *.log
+deno.lock
+
+# Local Netlify folder
+.netlify

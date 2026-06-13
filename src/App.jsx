@@ -22,7 +22,9 @@ import {
 } from "lucide-react";
 
 const API_BASE =
-  window.marketConfig?.apiBase || import.meta.env.VITE_API_BASE || "http://localhost:4173";
+  window.marketConfig?.apiBase ||
+  import.meta.env.VITE_API_BASE ||
+  (window.location.protocol === "file:" ? "http://localhost:4173" : "");
 const STORAGE_KEY = "market-v2-dashboard";
 const DEFAULT_SYMBOLS = [
   { symbol: "AAPL", name: "Apple Inc.", range: "1M" },

@@ -46,6 +46,18 @@ https://github.com/KidLeiS/market-board/releases
 
 This app is currently unsigned, so macOS may show a security warning the first time it opens.
 
+## Web Deployment
+
+The app is also configured for Netlify:
+
+```bash
+npm install
+npm run build
+npx netlify deploy --prod
+```
+
+Netlify serves the Vite frontend from `dist/` and rewrites `/api/*` to a stateless serverless function in `netlify/functions/api.mjs`. Watchlists and chart ranges stay in each user's browser local storage.
+
 ## Notes
 
 - Market data is fetched through the app's local Node proxy using `yahoo-finance2`.

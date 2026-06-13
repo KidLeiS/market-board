@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import YahooFinance from "yahoo-finance2";
-import { pathToFileURL } from "node:url";
 
 const rangeConfig = {
   "1D": { days: 1, interval: "5m" },
@@ -22,11 +21,11 @@ export function createMarketApp() {
   app.use(cors());
   app.use(express.json());
 
-  app.get("/api/health", (_req, res) => {
+  app.get(["/api/health", "/health"], (_req, res) => {
     res.json({ ok: true });
   });
 
-  app.get("/api/search", async (req, res) => {
+  app.get(["/api/search", "/search"], async (req, res) => {
     const query = String(req.query.q || "").trim();
 
     if (query.length < 1) {
@@ -56,7 +55,7 @@ export function createMarketApp() {
     }
   });
 
-  app.get("/api/quotes", async (req, res) => {
+  app.get(["/api/quotes", "/quotes"], async (req, res) => {
     const symbols = String(req.query.symbols || "")
       .split(",")
       .map((symbol) => symbol.trim().toUpperCase())
@@ -100,7 +99,7 @@ export function createMarketApp() {
     }
   });
 
-  app.get("/api/history/:symbol", async (req, res) => {
+  app.get(["/api/history/:symbol", "/history/:symbol"], async (req, res) => {
     const symbol = req.params.symbol.trim().toUpperCase();
     const selectedRange = String(req.query.range || "1M").toUpperCase();
     const config = rangeConfig[selectedRange] || rangeConfig["1M"];
@@ -166,13 +165,4 @@ export function startMarketServer({ port = Number(process.env.PORT || 4173), hos
     server.on("error", reject);
   }
   );
-}
-
-const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (isDirectRun) {
-  startMarketServer({ host: "0.0.0.0" }).catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
 }

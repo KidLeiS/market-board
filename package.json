@@ -11,7 +11,7 @@
     "desktop": "npm run build && electron .",
     "desktop:dev": "node scripts/desktop-dev.mjs",
     "client": "vite --host 0.0.0.0",
-    "server": "node server/index.js",
+    "server": "node server/cli.js",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "package:mac": "npm run build && electron-builder --mac"
@@ -20,10 +20,11 @@
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "lucide-react": "^0.468.0",
-    "recharts": "^3.8.1",
-    "yahoo-finance2": "^3.15.2",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "recharts": "^3.8.1",
+    "serverless-http": "^4.0.0",
+    "yahoo-finance2": "^3.15.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",

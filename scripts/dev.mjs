@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 const commands = [
-  { name: "server", command: "node", args: ["server/index.js"] },
+  { name: "server", command: "node", args: ["server/cli.js"] },
   { name: "client", command: "vite", args: ["--host", "0.0.0.0"] }
 ];
 
